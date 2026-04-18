@@ -3,6 +3,7 @@ package tmessage
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"strconv"
@@ -114,6 +115,10 @@ func collect(ctx context.Context, r io.Reader, peer peers.Peer, onlyMedia bool) 
 		}
 	}
 
+	if err := d.Err(); err != nil {
+		return nil, fmt.Errorf("decode json: %w", err)
+	}
+
 	return m, nil
 }
 
@@ -129,12 +134,21 @@ func getChatInfo(ctx context.Context, client *tg.Client, kvd storage.Storage, r 
 		}
 
 		if _kv.Key == keyID {
-			chatID = int64(_kv.Value.(float64))
+			switch v := _kv.Value.(type) {
+			case float64:
+				chatID = int64(v)
+			case string:
+				chatID, _ = strconv.ParseInt(v, 10, 64)
+			}
 		}
 
 		if chatID != 0 {
 			break
 		}
+	}
+
+	if err := d.Err(); err != nil {
+		return nil, fmt.Errorf("decode json for chat info: %w", err)
 	}
 
 	if chatID == 0 {
