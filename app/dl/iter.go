@@ -63,11 +63,12 @@ type iter struct {
 	messageIndex int // physical position: current message in dialog.Messages array
 
 	// TODO(Hexa): counter is de facto not be used in the codebase, but I perfer to reserve it. The key point is whether it still needs to be atomic or not.
-	counter        *atomic.Int64
-	skippedDeleted *atomic.Int64 // count of skipped deleted messages
-	deletedIDs     []string      // IDs of deleted messages (format: "dialogID/messageID")
-	elem           chan downloader.Elem
-	err            error
+	counter         *atomic.Int64
+	skippedDeleted  *atomic.Int64 // count of skipped deleted messages
+	deletedIDs      []string      // IDs of deleted messages (format: "dialogID/messageID")
+	processedGroups map[int64]struct{} // tracks grouped IDs that have been fully processed to prevent duplicate downloads
+	elem            chan downloader.Elem
+	err             error
 }
 
 func newIter(pool dcpool.Pool, manager *peers.Manager, dialog [][]*tmessage.Dialog,
@@ -111,11 +112,12 @@ func newIter(pool dcpool.Pool, manager *peers.Manager, dialog [][]*tmessage.Dial
 		logicalPos:     0,
 		dialogIndex:    0,
 		messageIndex:   0,
-		counter:        atomic.NewInt64(-1),
-		skippedDeleted: atomic.NewInt64(0),
-		deletedIDs:     make([]string, 0),
-		elem:           make(chan downloader.Elem, 10), // grouped message buffer
-		err:            nil,
+		counter:         atomic.NewInt64(-1),
+		skippedDeleted:  atomic.NewInt64(0),
+		deletedIDs:      make([]string, 0),
+		processedGroups: make(map[int64]struct{}),
+		elem:            make(chan downloader.Elem, 10), // grouped message buffer
+		err:             nil,
 	}, nil
 }
 
@@ -190,7 +192,12 @@ func (i *iter) process(ctx context.Context) (ret bool, skip bool) {
 		return false, false
 	}
 
-	if _, ok := message.GetGroupedID(); ok && i.opts.Group {
+	if groupedID, ok := message.GetGroupedID(); ok && i.opts.Group {
+		if _, done := i.processedGroups[groupedID]; done {
+			// This group was already processed, skip this message
+			i.logicalPos++
+			return false, true
+		}
 		return i.processGrouped(ctx, message, from, startLogicalPos)
 	}
 
@@ -281,6 +288,9 @@ func (i *iter) processSingle(ctx context.Context, message *tg.Message, from peer
 }
 
 func (i *iter) processGrouped(ctx context.Context, message *tg.Message, from peers.Peer, startLogicalPos int) (bool, bool) {
+	groupedID, _ := message.GetGroupedID()
+	i.processedGroups[groupedID] = struct{}{}
+
 	grouped, err := tutil.GetGroupedMessages(ctx, i.pool.Default(ctx), from.InputPeer(), message)
 	if err != nil {
 		i.err = errors.Wrapf(err, "resolve grouped message %d/%d", from.ID(), message.ID)
@@ -289,15 +299,14 @@ func (i *iter) processGrouped(ctx context.Context, message *tg.Message, from pee
 
 	hasValid := false
 
-	for idx, msg := range grouped {
-		logicalPos := startLogicalPos + idx
-
-		// check if this grouped message is already finished
-		if _, ok := i.finished[logicalPos]; ok {
+	for _, msg := range grouped {
+		// All grouped elements share startLogicalPos for finished tracking,
+		// since the entire group is downloaded as a single unit.
+		if _, ok := i.finished[startLogicalPos]; ok {
 			continue
 		}
 
-		ret, skip := i.processSingle(ctx, msg, from, logicalPos)
+		ret, skip := i.processSingle(ctx, msg, from, startLogicalPos)
 
 		// if processSingle encounters a fatal error (not just skip), propagate it
 		if !ret && !skip {
@@ -310,8 +319,9 @@ func (i *iter) processGrouped(ctx context.Context, message *tg.Message, from pee
 		}
 	}
 
-	// increment logical position by the number of messages in the group
-	i.logicalPos += len(grouped)
+	// Only increment by 1: this message occupies one position in the Messages array.
+	// Other messages from the same group will be skipped via processedGroups check.
+	i.logicalPos++
 
 	return hasValid, !hasValid
 }
