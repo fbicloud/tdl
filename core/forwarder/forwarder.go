@@ -358,7 +358,7 @@ func (f *Forwarder) forwardMessage(ctx context.Context, elem Elem, grouped ...*t
 			ReplyTo:                getReplyTo(elem.Thread()),
 			Media:                  media,
 			Message:                elem.Msg().Message,
-			RandomID:               rand.Int63(),
+			RandomID:               f.rand.Int63(),
 			ReplyMarkup:            elem.Msg().ReplyMarkup,
 			Entities:               elem.Msg().Entities,
 			ScheduleDate:           0,

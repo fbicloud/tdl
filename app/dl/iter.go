@@ -345,7 +345,11 @@ func (i *iter) Finished() map[int]struct{} {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 
-	return i.finished
+	result := make(map[int]struct{}, len(i.finished))
+	for k, v := range i.finished {
+		result[k] = v
+	}
+	return result
 }
 
 func (i *iter) Fingerprint() string {
@@ -377,7 +381,9 @@ func (i *iter) SkippedDeleted() int64 {
 func (i *iter) DeletedIDs() []string {
 	i.mu.Lock()
 	defer i.mu.Unlock()
-	return i.deletedIDs
+	result := make([]string, len(i.deletedIDs))
+	copy(result, i.deletedIDs)
+	return result
 }
 
 // positionToLogicalIndex converts physical position (dialogIndex, messageIndex) to logical index

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/fatih/color"
 	"github.com/go-faster/errors"
@@ -126,7 +127,9 @@ func serve(ctx context.Context,
 
 	go func() {
 		<-ctx.Done()
-		_ = s.Shutdown(ctx)
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = s.Shutdown(shutdownCtx)
 	}()
 
 	color.Green("(Beta) Serving on http://localhost:%d", port)
