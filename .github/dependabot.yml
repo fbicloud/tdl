@@ -13,12 +13,12 @@ updates:
     schedule:
       interval: "daily"
     assignees:
-      - "iyear"
+      - "fbicloud"
     open-pull-requests-limit: 99
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "daily"
     assignees:
-      - "iyear"
+      - "fbicloud"
     open-pull-requests-limit: 99
