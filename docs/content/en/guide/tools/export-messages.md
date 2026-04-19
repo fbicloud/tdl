@@ -120,3 +120,18 @@ Export all messages including non-media messages, which is useful for debugging/
 {{< command >}}
 tdl chat export -c CHAT --all
 {{< /command >}}
+
+## Filter by Sender
+
+Export all media messages sent by a specific user in a group chat:
+
+{{< command >}}
+tdl chat export -c CHAT --from USER_ID_OR_USERNAME
+{{< /command >}}
+
+Combine with other options, for example export last 100 media messages from a specific user:
+
+{{< command >}}
+tdl chat export -c CHAT --from USER_ID_OR_USERNAME -T last -i 100
+{{< /command >}}
+

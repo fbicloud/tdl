@@ -108,6 +108,7 @@ func NewChatExport() *cobra.Command {
 	cmd.Flags().BoolVar(&opts.WithContent, "with-content", false, "export with message content")
 	cmd.Flags().BoolVar(&opts.Raw, "raw", false, "export raw message struct of Telegram MTProto API, useful for debugging")
 	cmd.Flags().BoolVar(&opts.All, "all", false, "export all messages including non-media messages, but still affected by filter and type flag")
+	cmd.Flags().StringVar(&opts.From, "from", "", "only export messages sent by this user (user ID or username)")
 
 	// completion and validation
 	_ = cmd.RegisterFlagCompletionFunc(input, func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {

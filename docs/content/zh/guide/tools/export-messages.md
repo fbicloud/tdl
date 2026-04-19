@@ -120,3 +120,17 @@ tdl chat export -c CHAT --raw
 {{< command >}}
 tdl chat export -c CHAT --all
 {{< /command >}}
+
+## 按发送者过滤
+
+导出群聊中指定用户发送的所有媒体消息：
+
+{{< command >}}
+tdl chat export -c CHAT --from 用户ID或用户名
+{{< /command >}}
+
+可与其他选项组合使用，例如导出指定用户最近 100 条媒体消息：
+
+{{< command >}}
+tdl chat export -c CHAT --from 用户ID或用户名 -T last -i 100
+{{< /command >}}

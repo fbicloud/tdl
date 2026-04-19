@@ -34,6 +34,7 @@ type ExportOptions struct {
 	Input       []int
 	Output      string
 	Filter      string
+	From        string // user id or username to filter by sender
 	OnlyMedia   bool
 	WithContent bool
 	Raw         bool
@@ -102,6 +103,19 @@ func Export(ctx context.Context, c *telegram.Client, kvd storage.Storage, opts E
 
 	var q messages.Query
 	switch {
+	case opts.From != "": // filter by sender using messages.search API
+		fromPeer, err := tutil.GetInputPeer(ctx, manager, opts.From)
+		if err != nil {
+			return fmt.Errorf("failed to resolve --from user: %w", err)
+		}
+		search := query.NewQuery(c.API()).Messages().
+			Search(peer.InputPeer()).
+			FromID(fromPeer.InputPeer()).
+			BatchSize(100)
+		if opts.Thread != 0 {
+			search = search.TopMsgID(opts.Thread)
+		}
+		q = search
 	case opts.Thread != 0: // topic messages, reply messages
 		q = query.NewQuery(c.API()).Messages().GetReplies(peer.InputPeer()).MsgID(opts.Thread)
 	default: // history
