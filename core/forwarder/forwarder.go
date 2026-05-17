@@ -3,6 +3,7 @@ package forwarder
 import (
 	"context"
 	"math/rand"
+	"sync"
 	"time"
 
 	"github.com/go-faster/errors"
@@ -11,6 +12,7 @@ import (
 	"github.com/gotd/td/tg"
 	"go.uber.org/atomic"
 	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/iyear/tdl/core/dcpool"
 	"github.com/iyear/tdl/core/logctx"
@@ -33,6 +35,7 @@ type Options struct {
 
 type Forwarder struct {
 	sent map[tuple]struct{} // used to filter grouped messages which are already sent
+	mu   sync.Mutex
 	rand *rand.Rand
 	opts Options
 }
@@ -50,48 +53,60 @@ func New(opts Options) *Forwarder {
 	}
 }
 
-func (f *Forwarder) Forward(ctx context.Context) error {
-	for f.opts.Iter.Next(ctx) {
+func (f *Forwarder) Forward(ctx context.Context, limit int) error {
+	wg, wgctx := errgroup.WithContext(ctx)
+	wg.SetLimit(limit)
+
+	for f.opts.Iter.Next(wgctx) {
 		elem := f.opts.Iter.Value()
+
+		f.mu.Lock()
 		if _, ok := f.sent[f.tuple(elem.From(), elem.Msg())]; ok {
-			// skip grouped messages
+			f.mu.Unlock()
 			continue
 		}
+		f.sent[f.tuple(elem.From(), elem.Msg())] = struct{}{}
+		f.mu.Unlock()
 
-		if _, ok := elem.Msg().GetGroupedID(); ok && elem.AsGrouped() {
-			grouped, err := tutil.GetGroupedMessages(ctx, f.opts.Pool.Default(ctx), elem.From().InputPeer(), elem.Msg())
-			if err != nil {
-				continue
+		wg.Go(func() error {
+			f.opts.Progress.OnAdd(elem)
+
+			if _, ok := elem.Msg().GetGroupedID(); ok && elem.AsGrouped() {
+				grouped, err := tutil.GetGroupedMessages(wgctx, f.opts.Pool.Default(wgctx), elem.From().InputPeer(), elem.Msg())
+				if err != nil {
+					return nil
+				}
+
+				if err = f.forwardMessage(wgctx, elem, grouped...); errors.Is(err, context.Canceled) {
+					return err
+				}
+				return nil
 			}
 
-			if err = f.forwardMessage(ctx, elem, grouped...); err != nil {
-				continue
-			}
-
-			continue
-		}
-
-		if err := f.forwardMessage(ctx, elem); err != nil {
-			// canceled by user, so we directly return error to stop all
-			if errors.Is(err, context.Canceled) {
+			if err := f.forwardMessage(wgctx, elem); errors.Is(err, context.Canceled) {
 				return err
 			}
-			continue
-		}
+			return nil
+		})
 	}
 
-	return f.opts.Iter.Err()
+	if err := f.opts.Iter.Err(); err != nil {
+		return errors.Wrap(err, "iter")
+	}
+
+	return wg.Wait()
 }
 
 func (f *Forwarder) forwardMessage(ctx context.Context, elem Elem, grouped ...*tg.Message) (rerr error) {
-	f.opts.Progress.OnAdd(elem)
 	defer func() {
+		f.mu.Lock()
 		f.sent[f.tuple(elem.From(), elem.Msg())] = struct{}{}
 
 		// grouped message also should be marked as sent
 		for _, m := range grouped {
 			f.sent[f.tuple(elem.From(), m)] = struct{}{}
 		}
+		f.mu.Unlock()
 		f.opts.Progress.OnDone(elem, rerr)
 	}()
 

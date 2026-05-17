@@ -3,6 +3,7 @@ package forward
 import (
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/fatih/color"
 	pw "github.com/jedib0t/go-pretty/v6/progress"
@@ -14,8 +15,9 @@ import (
 )
 
 type progress struct {
+	mu       sync.Mutex
 	pw       pw.Writer
-	trackers map[tuple]*pw.Tracker // TODO(iyear): concurrent map
+	trackers map[tuple]*pw.Tracker
 	elemName map[int64]string
 }
 
@@ -34,17 +36,22 @@ func newProgress(p pw.Writer) *progress {
 }
 
 func (p *progress) OnAdd(elem forwarder.Elem) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
 	tracker := prog.AppendTracker(p.pw, pw.FormatNumber, p.processMessage(elem, false), 1)
 	p.trackers[p.tuple(elem)] = tracker
 }
 
 func (p *progress) OnClone(elem forwarder.Elem, state forwarder.ProgressState) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
 	tracker, ok := p.trackers[p.tuple(elem)]
 	if !ok {
 		return
 	}
 
-	// display re-upload transfer info
 	tracker.Units.Formatter = utils.Byte.FormatBinaryBytes
 	tracker.UpdateMessage(p.processMessage(elem, true))
 	tracker.UpdateTotal(state.Total)
@@ -52,6 +59,9 @@ func (p *progress) OnClone(elem forwarder.Elem, state forwarder.ProgressState) {
 }
 
 func (p *progress) OnDone(elem forwarder.Elem, err error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
 	tracker, ok := p.trackers[p.tuple(elem)]
 	if !ok {
 		return

@@ -100,10 +100,12 @@ func Run(ctx context.Context, c *telegram.Client, kvd storage.Storage, opts Opti
 		Threads:  viper.GetInt(consts.FlagThreads),
 	})
 
+	limit := viper.GetInt(consts.FlagLimit)
+
 	go fwProgress.Render()
 	defer prog.Wait(ctx, fwProgress)
 
-	return fw.Forward(ctx)
+	return fw.Forward(ctx, limit)
 }
 
 func collectDialogs(ctx context.Context, input []string, desc bool) ([]*tmessage.Dialog, error) {
