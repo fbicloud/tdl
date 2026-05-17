@@ -3,7 +3,7 @@ description: Create a report to help us improve
 title: "[Bug] Please complete title/请完善标题"
 labels: ["bug"]
 assignees:
-  - iyear
+  - fbicloud
 body:
   - type: markdown
     attributes:

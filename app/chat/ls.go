@@ -18,10 +18,10 @@ import (
 	"github.com/mattn/go-runewidth"
 	"go.uber.org/zap"
 
-	"github.com/iyear/tdl/core/logctx"
-	"github.com/iyear/tdl/core/storage"
-	"github.com/iyear/tdl/core/util/tutil"
-	"github.com/iyear/tdl/pkg/texpr"
+	"github.com/fbicloud/tdl/core/logctx"
+	"github.com/fbicloud/tdl/core/storage"
+	"github.com/fbicloud/tdl/core/util/tutil"
+	"github.com/fbicloud/tdl/pkg/texpr"
 )
 
 //go:generate go-enum --names --values --flag --nocase
@@ -504,7 +504,7 @@ func fetchDialogsWithErrorHandling(ctx context.Context, api *tg.Client) ([]dialo
 			// In gotd's query/dialogs iterator, it calls ExtractPeer without error handling,
 			// causing a panic when a channel doesn't exist in entities.
 			// We catch it here and skip the problematic dialog instead.
-			// See: https://github.com/iyear/tdl/issues/713
+			// See: https://github.com/fbicloud/tdl/issues/713
 			inputPeer, err := entities.ExtractPeer(dialog.Peer)
 			if err != nil {
 				// This dialog references a channel/chat that doesn't exist in entities

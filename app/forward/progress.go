@@ -9,9 +9,9 @@ import (
 	pw "github.com/jedib0t/go-pretty/v6/progress"
 	"github.com/mattn/go-runewidth"
 
-	"github.com/iyear/tdl/core/forwarder"
-	"github.com/iyear/tdl/pkg/prog"
-	"github.com/iyear/tdl/pkg/utils"
+	"github.com/fbicloud/tdl/core/forwarder"
+	"github.com/fbicloud/tdl/pkg/prog"
+	"github.com/fbicloud/tdl/pkg/utils"
 )
 
 type progress struct {

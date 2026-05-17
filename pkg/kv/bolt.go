@@ -10,8 +10,8 @@ import (
 	"go.etcd.io/bbolt"
 	"go.uber.org/multierr"
 
-	"github.com/iyear/tdl/core/storage"
-	"github.com/iyear/tdl/pkg/validator"
+	"github.com/fbicloud/tdl/core/storage"
+	"github.com/fbicloud/tdl/pkg/validator"
 )
 
 func init() {

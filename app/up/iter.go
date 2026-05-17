@@ -14,10 +14,10 @@ import (
 	"github.com/gotd/td/telegram/message/html"
 	"github.com/gotd/td/telegram/peers"
 
-	"github.com/iyear/tdl/core/uploader"
-	"github.com/iyear/tdl/core/util/mediautil"
-	"github.com/iyear/tdl/core/util/tutil"
-	"github.com/iyear/tdl/pkg/texpr"
+	"github.com/fbicloud/tdl/core/uploader"
+	"github.com/fbicloud/tdl/core/util/mediautil"
+	"github.com/fbicloud/tdl/core/util/tutil"
+	"github.com/fbicloud/tdl/pkg/texpr"
 )
 
 type File struct {

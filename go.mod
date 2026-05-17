@@ -1,4 +1,4 @@
-module github.com/iyear/tdl
+module github.com/fbicloud/tdl
 
 go 1.25.8
 
@@ -21,8 +21,8 @@ require (
 	github.com/gotd/td v0.140.0
 	github.com/iancoleman/strcase v0.3.0
 	github.com/ivanpirog/coloredcobra v1.0.1
-	github.com/iyear/tdl/core v0.20.2
-	github.com/iyear/tdl/extension v0.20.2
+	github.com/fbicloud/tdl/core v0.20.2
+	github.com/fbicloud/tdl/extension v0.20.2
 	github.com/jedib0t/go-pretty/v6 v6.5.0
 	github.com/klauspost/compress v1.18.5
 	github.com/kopoli/go-terminal-size v0.0.0-20170219200355-5c97524c8b54
@@ -112,4 +112,9 @@ require (
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	rsc.io/qr v0.2.0 // indirect
+)
+
+replace (
+	github.com/fbicloud/tdl/core => ./core
+	github.com/fbicloud/tdl/extension => ./extension
 )

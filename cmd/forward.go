@@ -8,10 +8,10 @@ import (
 	"github.com/gotd/td/telegram"
 	"github.com/spf13/cobra"
 
-	"github.com/iyear/tdl/app/forward"
-	"github.com/iyear/tdl/core/forwarder"
-	"github.com/iyear/tdl/core/logctx"
-	"github.com/iyear/tdl/core/storage"
+	"github.com/fbicloud/tdl/app/forward"
+	"github.com/fbicloud/tdl/core/forwarder"
+	"github.com/fbicloud/tdl/core/logctx"
+	"github.com/fbicloud/tdl/core/storage"
 )
 
 func NewForward() *cobra.Command {

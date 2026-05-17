@@ -14,10 +14,10 @@ import (
 	"github.com/go-faster/errors"
 	pw "github.com/jedib0t/go-pretty/v6/progress"
 
-	"github.com/iyear/tdl/core/downloader"
-	"github.com/iyear/tdl/core/util/fsutil"
-	"github.com/iyear/tdl/pkg/prog"
-	"github.com/iyear/tdl/pkg/utils"
+	"github.com/fbicloud/tdl/core/downloader"
+	"github.com/fbicloud/tdl/core/util/fsutil"
+	"github.com/fbicloud/tdl/pkg/prog"
+	"github.com/fbicloud/tdl/pkg/utils"
 )
 
 type progress struct {

@@ -1,4 +1,4 @@
-module github.com/iyear/tdl/docs
+module github.com/fbicloud/tdl/docs
 
 go 1.25.8
 

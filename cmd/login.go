@@ -7,8 +7,8 @@ import (
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 
-	"github.com/iyear/tdl/app/login"
-	"github.com/iyear/tdl/core/logctx"
+	"github.com/fbicloud/tdl/app/login"
+	"github.com/fbicloud/tdl/core/logctx"
 )
 
 func NewLogin() *cobra.Command {

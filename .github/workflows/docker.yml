@@ -50,7 +50,7 @@ jobs:
       - name: Use latest Dockerfile if workflow_dispatch
         if: ${{ github.event_name == 'workflow_dispatch' }}
         run: |
-          curl -s https://raw.githubusercontent.com/iyear/tdl/master/Dockerfile > Dockerfile
+          curl -s https://raw.githubusercontent.com/fbicloud/tdl/master/Dockerfile > Dockerfile
       - name: Extract Dockerfile args
         id: args
         run: |

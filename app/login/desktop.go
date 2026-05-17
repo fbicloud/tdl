@@ -14,14 +14,14 @@ import (
 	tdtdesktop "github.com/gotd/td/session/tdesktop"
 	"github.com/spf13/viper"
 
-	"github.com/iyear/tdl/core/storage"
-	"github.com/iyear/tdl/core/util/fsutil"
-	"github.com/iyear/tdl/pkg/consts"
-	"github.com/iyear/tdl/pkg/key"
-	"github.com/iyear/tdl/pkg/kv"
-	"github.com/iyear/tdl/pkg/tclient"
-	"github.com/iyear/tdl/pkg/tdesktop"
-	"github.com/iyear/tdl/pkg/tpath"
+	"github.com/fbicloud/tdl/core/storage"
+	"github.com/fbicloud/tdl/core/util/fsutil"
+	"github.com/fbicloud/tdl/pkg/consts"
+	"github.com/fbicloud/tdl/pkg/key"
+	"github.com/fbicloud/tdl/pkg/kv"
+	"github.com/fbicloud/tdl/pkg/tclient"
+	"github.com/fbicloud/tdl/pkg/tdesktop"
+	"github.com/fbicloud/tdl/pkg/tpath"
 )
 
 const tdata = "tdata"

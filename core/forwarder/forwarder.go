@@ -14,10 +14,10 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 
-	"github.com/iyear/tdl/core/dcpool"
-	"github.com/iyear/tdl/core/logctx"
-	"github.com/iyear/tdl/core/tmedia"
-	"github.com/iyear/tdl/core/util/tutil"
+	"github.com/fbicloud/tdl/core/dcpool"
+	"github.com/fbicloud/tdl/core/logctx"
+	"github.com/fbicloud/tdl/core/tmedia"
+	"github.com/fbicloud/tdl/core/util/tutil"
 )
 
 //go:generate go-enum --values --names --flag --nocase

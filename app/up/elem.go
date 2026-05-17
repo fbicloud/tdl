@@ -8,7 +8,7 @@ import (
 	"github.com/gotd/td/telegram/peers"
 	"github.com/gotd/td/tg"
 
-	"github.com/iyear/tdl/core/uploader"
+	"github.com/fbicloud/tdl/core/uploader"
 )
 
 type iterElem struct {

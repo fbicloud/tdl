@@ -15,10 +15,10 @@ import (
 	"github.com/skip2/go-qrcode"
 	"github.com/spf13/viper"
 
-	"github.com/iyear/tdl/pkg/consts"
-	"github.com/iyear/tdl/pkg/key"
-	"github.com/iyear/tdl/pkg/kv"
-	"github.com/iyear/tdl/pkg/tclient"
+	"github.com/fbicloud/tdl/pkg/consts"
+	"github.com/fbicloud/tdl/pkg/key"
+	"github.com/fbicloud/tdl/pkg/kv"
+	"github.com/fbicloud/tdl/pkg/tclient"
 )
 
 func QR(ctx context.Context) error {

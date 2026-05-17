@@ -21,13 +21,13 @@ import (
 	"github.com/gotd/td/tg"
 	"github.com/spf13/viper"
 
-	"github.com/iyear/tdl/core/dcpool"
-	"github.com/iyear/tdl/core/logctx"
-	"github.com/iyear/tdl/core/storage"
-	"github.com/iyear/tdl/core/tmedia"
-	"github.com/iyear/tdl/core/util/tutil"
-	"github.com/iyear/tdl/pkg/consts"
-	"github.com/iyear/tdl/pkg/tmessage"
+	"github.com/fbicloud/tdl/core/dcpool"
+	"github.com/fbicloud/tdl/core/logctx"
+	"github.com/fbicloud/tdl/core/storage"
+	"github.com/fbicloud/tdl/core/tmedia"
+	"github.com/fbicloud/tdl/core/util/tutil"
+	"github.com/fbicloud/tdl/pkg/consts"
+	"github.com/fbicloud/tdl/pkg/tmessage"
 )
 
 type media struct {
