@@ -100,103 +100,112 @@ func (i *iter) Next(ctx context.Context) bool {
 		time.Sleep(i.opts.delay)
 	}
 
-	p, m := i.opts.dialogs[i.i].Peer, i.opts.dialogs[i.i].Messages[i.j]
-
-	if i.j++; i.j >= len(i.opts.dialogs[i.i].Messages) {
-		i.i++
-		i.j = 0
-	}
-
-	from, err := i.opts.manager.FromInputPeer(ctx, p)
-	if err != nil {
-		i.err = errors.Wrap(err, "get from peer")
-		return false
-	}
-
-	msg, err := tutil.GetSingleMessage(ctx, i.opts.pool.Default(ctx), from.InputPeer(), m)
-	if err != nil {
-		i.err = errors.Wrapf(err, "get message: %d", m)
-		return false
-	}
-
-	// message routing
-	result, err := texpr.Run(i.opts.to, exprEnv(from, msg))
-	if err != nil {
-		i.err = errors.Wrap(err, "message routing")
-		return false
-	}
-
-	var (
-		to     peers.Peer
-		thread int
-	)
-
-	switch r := result.(type) {
-	case string:
-		// pure chat, no reply to, which is a compatible with old version
-		// and a convenient way to send message to self
-		to, err = i.resolvePeer(ctx, r)
-	case map[string]interface{}:
-		// chat with reply to topic or message
-		var d dest
-
-		if err = mapstructure.WeakDecode(r, &d); err != nil {
-			i.err = errors.Wrapf(err, "decode dest: %v", result)
+	for {
+		if i.i >= len(i.opts.dialogs) {
 			return false
 		}
 
-		to, err = i.resolvePeer(ctx, d.Peer)
-		thread = d.Thread
-	default:
-		i.err = errors.Errorf("message router must return string or dest: %T", result)
-		return false
-	}
+		p, m := i.opts.dialogs[i.i].Peer, i.opts.dialogs[i.i].Messages[i.j]
 
-	var modeOverride forwarder.Mode = -1 // default value is invalid
-	// edit message
-	if i.opts.edit != nil {
-		result, err = texpr.Run(i.opts.edit, exprEnv(from, msg))
+		if i.j++; i.j >= len(i.opts.dialogs[i.i].Messages) {
+			i.i++
+			i.j = 0
+		}
+
+		from, err := i.opts.manager.FromInputPeer(ctx, p)
 		if err != nil {
-			i.err = errors.Wrap(err, "edit message")
+			i.err = errors.Wrap(err, "get from peer")
 			return false
 		}
 
-		r, ok := result.(string)
-		if !ok {
-			i.err = errors.Errorf("edit must return string: %T", result)
+		msg, err := tutil.GetSingleMessage(ctx, i.opts.pool.Default(ctx), from.InputPeer(), m)
+		if err != nil {
+			if errors.Is(err, tutil.ErrMessageDeleted) {
+				continue
+			}
+			i.err = errors.Wrapf(err, "get message: %d", m)
 			return false
 		}
 
-		eb := entity.Builder{}
-		if err = html.HTML(strings.NewReader(r), &eb, html.Options{
-			UserResolver:          nil,
-			DisableTelegramEscape: false,
-		}); err != nil {
-			i.err = errors.Wrap(err, "parse edited message")
+		// message routing
+		result, err := texpr.Run(i.opts.to, exprEnv(from, msg))
+		if err != nil {
+			i.err = errors.Wrap(err, "message routing")
 			return false
 		}
 
-		// modify message
-		msg.Message, msg.Entities = eb.Complete()
-		// direct mode can't modify message content, so we force it to be clone mode
-		modeOverride = forwarder.ModeClone
-	}
+		var (
+			to     peers.Peer
+			thread int
+		)
 
-	if err != nil {
-		i.err = errors.Wrapf(err, "resolve dest: %v", result)
-		return false
-	}
+		switch r := result.(type) {
+		case string:
+			// pure chat, no reply to, which is a compatible with old version
+			// and a convenient way to send message to self
+			to, err = i.resolvePeer(ctx, r)
+		case map[string]interface{}:
+			// chat with reply to topic or message
+			var d dest
 
-	i.elem = &iterElem{
-		from:         from,
-		msg:          msg,
-		to:           to,
-		thread:       thread,
-		modeOverride: modeOverride,
-		opts:         i.opts,
-	}
+			if err = mapstructure.WeakDecode(r, &d); err != nil {
+				i.err = errors.Wrapf(err, "decode dest: %v", result)
+				return false
+			}
 
-	return true
+			to, err = i.resolvePeer(ctx, d.Peer)
+			thread = d.Thread
+		default:
+			i.err = errors.Errorf("message router must return string or dest: %T", result)
+			return false
+		}
+
+		var modeOverride forwarder.Mode = -1 // default value is invalid
+		// edit message
+		if i.opts.edit != nil {
+			result, err = texpr.Run(i.opts.edit, exprEnv(from, msg))
+			if err != nil {
+				i.err = errors.Wrap(err, "edit message")
+				return false
+			}
+
+			r, ok := result.(string)
+			if !ok {
+				i.err = errors.Errorf("edit must return string: %T", result)
+				return false
+			}
+
+			eb := entity.Builder{}
+			if err = html.HTML(strings.NewReader(r), &eb, html.Options{
+				UserResolver:          nil,
+				DisableTelegramEscape: false,
+			}); err != nil {
+				i.err = errors.Wrap(err, "parse edited message")
+				return false
+			}
+
+			// modify message
+			msg.Message, msg.Entities = eb.Complete()
+			// direct mode can't modify message content, so we force it to be clone mode
+			modeOverride = forwarder.ModeClone
+		}
+
+		if err != nil {
+			i.err = errors.Wrapf(err, "resolve dest: %v", result)
+			return false
+		}
+
+		i.elem = &iterElem{
+			from:         from,
+			msg:          msg,
+			to:           to,
+			thread:       thread,
+			modeOverride: modeOverride,
+			opts:         i.opts,
+		}
+
+		return true
+	}
 }
 
 func (i *iter) resolvePeer(ctx context.Context, peer string) (peers.Peer, error) {
