@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/expr-lang/expr"
@@ -39,6 +40,7 @@ type ExportOptions struct {
 	WithContent bool
 	Raw         bool
 	All         bool
+	Dedup       bool // skip duplicate media within the same chat
 }
 
 type Message struct {
@@ -164,6 +166,7 @@ func Export(ctx context.Context, c *telegram.Client, kvd storage.Storage, opts E
 	defer enc.ArrEnd()
 
 	count := int64(0)
+	seenMedia := make(map[string]struct{})
 
 loop:
 	for iter.Next(ctx) {
@@ -191,6 +194,19 @@ loop:
 		media, ok := tmedia.GetMedia(m)
 		if !ok && !opts.All {
 			continue
+		}
+
+		// dedup: skip duplicate media within the same chat.
+		// Same file shared multiple times (e.g. re-forwarded) has the
+		// same server-side media ID and is treated as duplicate.
+		if opts.Dedup && media != nil {
+			if key := media.GetMediaUniqueKey(); key != "" {
+				key = strconv.FormatInt(id, 10) + "/" + key
+				if _, seen := seenMedia[key]; seen {
+					continue
+				}
+				seenMedia[key] = struct{}{}
+			}
 		}
 
 		b, err := texpr.Run(filter, texpr.ConvertEnvMessage(m))
