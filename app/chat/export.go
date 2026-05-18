@@ -123,14 +123,42 @@ func Export(ctx context.Context, c *telegram.Client, kvd storage.Storage, opts E
 	default: // history
 		q = query.NewQuery(c.API()).Messages().GetHistory(peer.InputPeer())
 	}
-	iter := messages.NewIterator(q, 100)
 
-	switch opts.Type {
-	case ExportTypeTime:
-		iter = iter.OffsetDate(opts.Input[1] + 1)
-	case ExportTypeId:
-		iter = iter.OffsetID(opts.Input[1] + 1) // #89: retain the last msg id
-	case ExportTypeLast:
+	// Build the iterator. When exporting media-only from history
+	// (no --from, no --thread), use server-side media filters via
+	// messages.Search to avoid fetching non-media messages.
+	var iter iterator
+	if !opts.All && opts.From == "" && opts.Thread == 0 {
+		searchA := query.NewQuery(c.API()).Messages().
+			Search(peer.InputPeer()).
+			Filter(&tg.InputMessagesFilterPhotoVideo{}).
+			BatchSize(100)
+		searchB := query.NewQuery(c.API()).Messages().
+			Search(peer.InputPeer()).
+			Filter(&tg.InputMessagesFilterDocument{}).
+			BatchSize(100)
+		itA := messages.NewIterator(searchA, 100)
+		itB := messages.NewIterator(searchB, 100)
+		switch opts.Type {
+		case ExportTypeTime:
+			itA = itA.OffsetDate(opts.Input[1] + 1)
+			itB = itB.OffsetDate(opts.Input[1] + 1)
+		case ExportTypeId:
+			itA = itA.OffsetID(opts.Input[1] + 1)
+			itB = itB.OffsetID(opts.Input[1] + 1)
+		case ExportTypeLast:
+		}
+		iter = &mediaIter{a: itA, b: itB}
+	} else {
+		it := messages.NewIterator(q, 100)
+		switch opts.Type {
+		case ExportTypeTime:
+			it = it.OffsetDate(opts.Input[1] + 1)
+		case ExportTypeId:
+			it = it.OffsetID(opts.Input[1] + 1) // #89: retain the last msg id
+		case ExportTypeLast:
+		}
+		iter = &singleIter{it}
 	}
 
 	f, err := os.Create(opts.Output)
@@ -251,4 +279,76 @@ loop:
 	tracker.MarkAsDone()
 	prog.Wait(ctx, pw)
 	return nil
+}
+
+// iterator abstracts a message source so the export loop works with both
+// a single messages.Iterator and a merged pair for media-only searches.
+type iterator interface {
+	Next(ctx context.Context) bool
+	Value() messages.Elem
+	Err() error
+}
+
+// singleIter wraps a single messages.Iterator for the standard code path.
+type singleIter struct {
+	it *messages.Iterator
+}
+
+func (s *singleIter) Next(ctx context.Context) bool { return s.it.Next(ctx) }
+func (s *singleIter) Value() messages.Elem           { return s.it.Value() }
+func (s *singleIter) Err() error                     { return s.it.Err() }
+
+// mediaIter merges two messages.Iterator instances (photo+video and
+// document search results) into a single ID-descending stream.
+// Both iterators must produce messages in descending ID order.
+type mediaIter struct {
+	a, b  *messages.Iterator
+	nextA messages.Elem
+	nextB messages.Elem
+	hasA  bool
+	hasB  bool
+	errA  error
+	errB  error
+	cur   messages.Elem
+}
+
+func (m *mediaIter) Next(ctx context.Context) bool {
+	// refill buffers
+	if !m.hasA && m.errA == nil {
+		if m.a.Next(ctx) {
+			m.nextA = m.a.Value()
+			m.hasA = true
+		} else {
+			m.errA = m.a.Err()
+		}
+	}
+	if !m.hasB && m.errB == nil {
+		if m.b.Next(ctx) {
+			m.nextB = m.b.Value()
+			m.hasB = true
+		} else {
+			m.errB = m.b.Err()
+		}
+	}
+	if !m.hasA && !m.hasB {
+		return false
+	}
+	// pick the message with the higher ID to maintain descending order
+	if m.hasA && (!m.hasB || m.nextA.Msg.GetID() >= m.nextB.Msg.GetID()) {
+		m.cur = m.nextA
+		m.hasA = false
+		return true
+	}
+	m.cur = m.nextB
+	m.hasB = false
+	return true
+}
+
+func (m *mediaIter) Value() messages.Elem { return m.cur }
+
+func (m *mediaIter) Err() error {
+	if m.errA != nil {
+		return m.errA
+	}
+	return m.errB
 }
