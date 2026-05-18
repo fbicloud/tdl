@@ -79,6 +79,7 @@ func (f *Forwarder) Forward(ctx context.Context, limit int) error {
 	// processed immediately and flush any pending batch first.
 	var batch []Elem
 	var batchKey batchKey
+	pendingGroups := make(map[int64]struct{})
 
 	mustFlush := func(next Elem) bool {
 		if len(batch) == 0 {
@@ -105,23 +106,45 @@ func (f *Forwarder) Forward(ctx context.Context, limit int) error {
 			continue
 		}
 		if _, ok := elem.Msg().GetGroupedID(); ok && elem.AsGrouped() {
+			groupID, _ := elem.Msg().GetGroupedID()
+			if _, pending := pendingGroups[groupID]; pending {
+				f.mu.Unlock()
+				continue // another goroutine is handling this group
+			}
+			pendingGroups[groupID] = struct{}{}
+			f.sent[f.tuple(elem.From(), elem.Msg())] = struct{}{}
 			f.mu.Unlock()
-			// Flush pending batch before grouped message.
+
+			// Flush pending batch before spawning grouped goroutine.
 			flushBatch(batch)
 			batch = batch[:0]
 
-			var err error
-			grouped, err = tutil.GetGroupedMessages(wgctx, f.opts.Pool.Default(wgctx), elem.From().InputPeer(), elem.Msg())
-			if err != nil {
+			fromPeer := elem.From().InputPeer()
+			wg.Go(func() error {
+				defer func() {
+					f.mu.Lock()
+					delete(pendingGroups, groupID)
+					f.mu.Unlock()
+				}()
+
+				grouped, err := tutil.GetGroupedMessages(wgctx, f.opts.Pool.Default(wgctx), fromPeer, elem.Msg())
+				if err != nil {
+					return nil
+				}
+
 				f.mu.Lock()
-				f.sent[f.tuple(elem.From(), elem.Msg())] = struct{}{}
+				for _, m := range grouped {
+					f.sent[f.tuple(elem.From(), m)] = struct{}{}
+				}
 				f.mu.Unlock()
-				continue
-			}
-			f.mu.Lock()
-			for _, m := range grouped {
-				f.sent[f.tuple(elem.From(), m)] = struct{}{}
-			}
+
+				f.opts.Progress.OnAdd(elem)
+				if err := f.forwardMessage(wgctx, elem, grouped...); errors.Is(err, context.Canceled) {
+					return err
+				}
+				return nil
+			})
+			continue
 		} else if elem.Mode() == ModeDirect &&
 			!protectedDialog(elem.From()) && !protectedMessage(elem.Msg()) {
 			// Batchable direct-mode message.
