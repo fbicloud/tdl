@@ -57,6 +57,40 @@ func (f *Forwarder) Forward(ctx context.Context, limit int) error {
 	wg, wgctx := errgroup.WithContext(ctx)
 	wg.SetLimit(limit)
 
+	// flushBatch sends a collected batch of direct-mode messages in one
+	// API call.  forwardBatch handles progress callbacks internally.
+	flushBatch := func(batch []Elem) {
+		if len(batch) == 0 {
+			return
+		}
+		b := make([]Elem, len(batch))
+		copy(b, batch)
+		wg.Go(func() error {
+			if err := f.forwardBatch(wgctx, b); errors.Is(err, context.Canceled) {
+				return err
+			}
+			return nil
+		})
+	}
+
+	// batch collects consecutive non-grouped direct-mode messages that
+	// share the same (from, to, silent, thread, dropAuthor) tuple and
+	// are not protected.  Grouped / clone / protected messages are
+	// processed immediately and flush any pending batch first.
+	var batch []Elem
+	var batchKey batchKey
+
+	mustFlush := func(next Elem) bool {
+		if len(batch) == 0 {
+			return false
+		}
+		if len(batch) >= 100 { // Telegram API limit
+			return true
+		}
+		k := keyOf(next)
+		return k != batchKey
+	}
+
 	for f.opts.Iter.Next(wgctx) {
 		elem := f.opts.Iter.Value()
 
@@ -72,6 +106,10 @@ func (f *Forwarder) Forward(ctx context.Context, limit int) error {
 		}
 		if _, ok := elem.Msg().GetGroupedID(); ok && elem.AsGrouped() {
 			f.mu.Unlock()
+			// Flush pending batch before grouped message.
+			flushBatch(batch)
+			batch = batch[:0]
+
 			var err error
 			grouped, err = tutil.GetGroupedMessages(wgctx, f.opts.Pool.Default(wgctx), elem.From().InputPeer(), elem.Msg())
 			if err != nil {
@@ -84,10 +122,29 @@ func (f *Forwarder) Forward(ctx context.Context, limit int) error {
 			for _, m := range grouped {
 				f.sent[f.tuple(elem.From(), m)] = struct{}{}
 			}
+		} else if elem.Mode() == ModeDirect &&
+			!protectedDialog(elem.From()) && !protectedMessage(elem.Msg()) {
+			// Batchable direct-mode message.
+			f.sent[f.tuple(elem.From(), elem.Msg())] = struct{}{}
+			f.mu.Unlock()
+
+			if mustFlush(elem) {
+				flushBatch(batch)
+				batch = batch[:0]
+			}
+			batch = append(batch, elem)
+			if len(batch) == 1 {
+				batchKey = keyOf(elem)
+			}
+			continue
 		} else {
 			f.sent[f.tuple(elem.From(), elem.Msg())] = struct{}{}
 		}
 		f.mu.Unlock()
+
+		// Non-batchable: flush pending batch first, then process.
+		flushBatch(batch)
+		batch = batch[:0]
 
 		wg.Go(func() error {
 			f.opts.Progress.OnAdd(elem)
@@ -106,11 +163,110 @@ func (f *Forwarder) Forward(ctx context.Context, limit int) error {
 		})
 	}
 
+	// Flush any remaining batch.
+	flushBatch(batch)
+
 	if err := f.opts.Iter.Err(); err != nil {
 		return errors.Wrap(err, "iter")
 	}
 
 	return wg.Wait()
+}
+
+// batchKey identifies the batching group for direct-mode messages.
+// Messages with the same key can be forwarded in a single API call.
+type batchKey struct {
+	from       int64
+	to         int64
+	silent     bool
+	thread     int
+	dropAuthor bool
+}
+
+func keyOf(e Elem) batchKey {
+	return batchKey{
+		from:       e.From().ID(),
+		to:         e.To().ID(),
+		silent:     e.AsSilent(),
+		thread:     e.Thread(),
+		dropAuthor: e.AsDropAuthor(),
+	}
+}
+
+// forwardBatch sends multiple direct-mode messages in one
+// MessagesForwardMessages call.  All elems must share the same
+// (from, to, silent, thread, dropAuthor) tuple and be unprotected.
+// Handles its own progress callbacks.  On failure, falls back to
+// individual forwardMessage calls.
+func (f *Forwarder) forwardBatch(ctx context.Context, elems []Elem) (rerr error) {
+	if len(elems) == 0 {
+		return nil
+	}
+	first := elems[0]
+
+	// Track progress for every element in the batch.
+	for _, e := range elems {
+		f.opts.Progress.OnAdd(e)
+	}
+
+	defer func() {
+		f.mu.Lock()
+		for _, e := range elems {
+			f.sent[f.tuple(e.From(), e.Msg())] = struct{}{}
+		}
+		f.mu.Unlock()
+	}()
+
+	ids := make([]int, len(elems))
+	randIDs := make([]int64, len(elems))
+	for i, e := range elems {
+		ids[i] = e.Msg().ID
+		randIDs[i] = f.rand.Int63()
+	}
+
+	req := &tg.MessagesForwardMessagesRequest{
+		Silent:            first.AsSilent(),
+		Background:        false,
+		WithMyScore:       false,
+		DropAuthor:        first.AsDropAuthor(),
+		DropMediaCaptions: false,
+		Noforwards:        false,
+		FromPeer:          first.From().InputPeer(),
+		ID:                ids,
+		RandomID:          randIDs,
+		ToPeer:            first.To().InputPeer(),
+		TopMsgID:          first.Thread(),
+		ScheduleDate:      0,
+		SendAs:            nil,
+	}
+	req.SetFlags()
+
+	log := logctx.From(ctx).With(
+		zap.Int64("from", first.From().ID()),
+		zap.Int64("to", first.To().ID()),
+		zap.Int("batch_size", len(ids)))
+
+	if _, err := f.forwardClient(ctx, first).MessagesForwardMessages(ctx, req); err != nil {
+		log.Warn("Batch forward failed, falling back to individual",
+			zap.Error(err))
+		// Fall back to individual forwarding.  forwardMessage
+		// handles its own OnAdd/OnDone, so we skip OnDone here.
+		var firstErr error
+		for _, e := range elems {
+			if err := f.forwardMessage(ctx, e); err != nil {
+				if firstErr == nil {
+					firstErr = err
+				}
+			}
+		}
+		return firstErr
+	}
+
+	// Success: mark all as done.
+	for _, e := range elems {
+		f.opts.Progress.OnDone(e, nil)
+	}
+	return nil
 }
 
 func (f *Forwarder) forwardMessage(ctx context.Context, elem Elem, grouped ...*tg.Message) (rerr error) {
