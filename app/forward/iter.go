@@ -26,11 +26,12 @@ type iterOptions struct {
 	to      *vm.Program
 	edit    *vm.Program
 	dialogs []*tmessage.Dialog
-	mode    forwarder.Mode
-	silent  bool
-	dryRun  bool
-	grouped bool
-	delay   time.Duration
+	mode       forwarder.Mode
+	silent     bool
+	dryRun     bool
+	dropAuthor bool
+	grouped    bool
+	delay      time.Duration
 }
 
 type iter struct {

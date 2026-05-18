@@ -33,10 +33,11 @@ type Options struct {
 	To     string
 	Edit   string
 	Mode   forwarder.Mode
-	Silent bool
-	DryRun bool
-	Single bool
-	Desc   bool
+	Silent     bool
+	DryRun     bool
+	DropAuthor bool
+	Single     bool
+	Desc       bool
 }
 
 func Run(ctx context.Context, c *telegram.Client, kvd storage.Storage, opts Options) (rerr error) {
@@ -90,10 +91,11 @@ func Run(ctx context.Context, c *telegram.Client, kvd storage.Storage, opts Opti
 			to:      to,
 			edit:    edit,
 			dialogs: dialogs,
-			mode:    opts.Mode,
-			silent:  opts.Silent,
-			dryRun:  opts.DryRun,
-			grouped: !opts.Single,
+			mode:       opts.Mode,
+			silent:     opts.Silent,
+			dryRun:     opts.DryRun,
+			dropAuthor: opts.DropAuthor,
+			grouped:    !opts.Single,
 			delay:   viper.GetDuration(consts.FlagDelay),
 		}),
 		Progress: newProgress(fwProgress),

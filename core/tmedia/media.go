@@ -1,6 +1,8 @@
 package tmedia
 
 import (
+	"strconv"
+
 	"github.com/gotd/td/tg"
 )
 
@@ -10,6 +12,28 @@ type Media struct {
 	Size         int64                     // size in bytes
 	DC           int                       // which DC the media is stored
 	Date         int64                     // media creation(upload) timestamp
+}
+
+func (m *Media) GetMediaID() int64 {
+	switch loc := m.InputFileLoc.(type) {
+	case *tg.InputPhotoFileLocation:
+		return loc.GetID()
+	case *tg.InputDocumentFileLocation:
+		return loc.GetID()
+	default:
+		return 0
+	}
+}
+
+func (m *Media) GetMediaUniqueKey() string {
+	switch loc := m.InputFileLoc.(type) {
+	case *tg.InputPhotoFileLocation:
+		return "photo/" + strconv.FormatInt(loc.GetID(), 10)
+	case *tg.InputDocumentFileLocation:
+		return "doc/" + strconv.FormatInt(loc.GetID(), 10)
+	default:
+		return ""
+	}
 }
 
 func ExtractMedia(m tg.MessageMediaClass) (*Media, bool) {

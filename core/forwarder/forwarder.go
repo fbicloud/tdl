@@ -60,24 +60,40 @@ func (f *Forwarder) Forward(ctx context.Context, limit int) error {
 	for f.opts.Iter.Next(wgctx) {
 		elem := f.opts.Iter.Value()
 
+		// Fetch grouped messages in the main loop so ALL members
+		// are marked before the next iterator element is processed.
+		// Otherwise the next element (same album) can sneak through
+		// before the goroutine finishes GetGroupedMessages.
+		var grouped []*tg.Message
 		f.mu.Lock()
 		if _, ok := f.sent[f.tuple(elem.From(), elem.Msg())]; ok {
 			f.mu.Unlock()
 			continue
 		}
-		f.sent[f.tuple(elem.From(), elem.Msg())] = struct{}{}
+		if _, ok := elem.Msg().GetGroupedID(); ok && elem.AsGrouped() {
+			f.mu.Unlock()
+			var err error
+			grouped, err = tutil.GetGroupedMessages(wgctx, f.opts.Pool.Default(wgctx), elem.From().InputPeer(), elem.Msg())
+			if err != nil {
+				f.mu.Lock()
+				f.sent[f.tuple(elem.From(), elem.Msg())] = struct{}{}
+				f.mu.Unlock()
+				continue
+			}
+			f.mu.Lock()
+			for _, m := range grouped {
+				f.sent[f.tuple(elem.From(), m)] = struct{}{}
+			}
+		} else {
+			f.sent[f.tuple(elem.From(), elem.Msg())] = struct{}{}
+		}
 		f.mu.Unlock()
 
 		wg.Go(func() error {
 			f.opts.Progress.OnAdd(elem)
 
-			if _, ok := elem.Msg().GetGroupedID(); ok && elem.AsGrouped() {
-				grouped, err := tutil.GetGroupedMessages(wgctx, f.opts.Pool.Default(wgctx), elem.From().InputPeer(), elem.Msg())
-				if err != nil {
-					return nil
-				}
-
-				if err = f.forwardMessage(wgctx, elem, grouped...); errors.Is(err, context.Canceled) {
+			if len(grouped) > 0 {
+				if err := f.forwardMessage(wgctx, elem, grouped...); errors.Is(err, context.Canceled) {
 					return err
 				}
 				return nil
@@ -245,17 +261,18 @@ func (f *Forwarder) forwardMessage(ctx context.Context, elem Elem, grouped ...*t
 
 		// note that they must be separately uploaded using messages uploadMedia first,
 		// using raw inputMediaUploaded* constructors is not supported.
-		messageMedia, err := f.forwardClient(ctx, elem).MessagesUploadMedia(ctx, &tg.MessagesUploadMediaRequest{
-			Peer:  elem.To().InputPeer(),
-			Media: inputMedia,
-		})
-		if err != nil {
-			return nil, errors.Wrap(err, "upload media")
-		}
-
-		inputMedia, ok = tmedia.ConvInputMedia(messageMedia)
-		if !ok && !elem.AsDryRun() {
-			return nil, errors.Errorf("can't convert uploaded media to input class")
+		//
+		// FIX: MessagesUploadMedia may not preserve the document attributes
+		// (NosoundVideo, ForceFile, Attributes) properly, causing media to
+		// lose its display type (video → file, etc.). Use the
+		// InputMediaUploadedDocument directly in MessagesSendMedia instead.
+		// The file has already been uploaded via upload.saveFilePart.
+		if elem.AsDryRun() {
+			// In dry-run mode, we can't use uploadMedia either — just
+			// return a placeholder for counting purposes.
+			fallback := &tg.InputMediaDocument{}
+			fallback.SetFlags()
+			return fallback, nil
 		}
 
 		return inputMedia, nil
@@ -275,7 +292,7 @@ func (f *Forwarder) forwardMessage(ctx context.Context, elem Elem, grouped ...*t
 					Silent:            elem.AsSilent(),
 					Background:        false,
 					WithMyScore:       false,
-					DropAuthor:        false,
+					DropAuthor:        elem.AsDropAuthor(),
 					DropMediaCaptions: false,
 					Noforwards:        false,
 					FromPeer:          elem.From().InputPeer(),

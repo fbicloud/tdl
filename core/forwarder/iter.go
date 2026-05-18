@@ -23,5 +23,6 @@ type Elem interface {
 
 	AsSilent() bool
 	AsDryRun() bool
-	AsGrouped() bool // detect and forward grouped messages
+	AsDropAuthor() bool // hide original author when forwarding (direct mode only)
+	AsGrouped() bool    // detect and forward grouped messages
 }
