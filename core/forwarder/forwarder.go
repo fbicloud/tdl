@@ -127,8 +127,18 @@ func (f *Forwarder) Forward(ctx context.Context, limit int) error {
 					f.mu.Unlock()
 				}()
 
+				log := logctx.From(wgctx)
+
 				grouped, err := tutil.GetGroupedMessages(wgctx, f.opts.Pool.Default(wgctx), fromPeer, elem.Msg())
 				if err != nil {
+					log.Warn("GetGroupedMessages failed, forwarding single message only",
+						zap.Int64("chat", elem.From().ID()),
+						zap.Int("msg", elem.Msg().ID),
+						zap.Error(err))
+					f.opts.Progress.OnAdd(elem)
+					if err := f.forwardMessage(wgctx, elem); errors.Is(err, context.Canceled) {
+						return err
+					}
 					return nil
 				}
 
@@ -655,7 +665,7 @@ func mediaSizeSum(msg *tg.Message, grouped ...*tg.Message) (int64, error) {
 		for _, gm := range grouped {
 			m, ok := tmedia.GetMedia(gm)
 			if !ok {
-				return 0, errors.Errorf("can't get media from message %d", gm.ID)
+				continue // skip messages without extractable media
 			}
 			total += m.Size
 		}

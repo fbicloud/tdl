@@ -36,7 +36,6 @@ type ExportOptions struct {
 	Output      string
 	Filter      string
 	From        string // user id or username to filter by sender
-	OnlyMedia   bool
 	WithContent bool
 	Raw         bool
 	All         bool
@@ -124,8 +123,9 @@ func Export(ctx context.Context, c *telegram.Client, kvd storage.Storage, opts E
 		q = query.NewQuery(c.API()).Messages().GetHistory(peer.InputPeer())
 	}
 
-	// Build the iterator. Always use GetHistory for deterministic
-	// ordering so that --dedup produces consistent results across runs.
+	// Build the iterator. For the default history path, GetHistory
+	// returns messages in strict ID-descending order so --dedup
+	// produces consistent results across runs.
 	it := messages.NewIterator(q, 100)
 	switch opts.Type {
 	case ExportTypeTime:
@@ -134,7 +134,7 @@ func Export(ctx context.Context, c *telegram.Client, kvd storage.Storage, opts E
 		it = it.OffsetID(opts.Input[1] + 1)
 	case ExportTypeLast:
 	}
-	iter := &singleIter{it}
+	iter := it
 
 	f, err := os.Create(opts.Output)
 	if err != nil {
@@ -256,19 +256,3 @@ loop:
 	return nil
 }
 
-// iterator abstracts a message source so the export loop works with
-// a messages.Iterator.
-type iterator interface {
-	Next(ctx context.Context) bool
-	Value() messages.Elem
-	Err() error
-}
-
-// singleIter wraps a single messages.Iterator.
-type singleIter struct {
-	it *messages.Iterator
-}
-
-func (s *singleIter) Next(ctx context.Context) bool { return s.it.Next(ctx) }
-func (s *singleIter) Value() messages.Elem           { return s.it.Value() }
-func (s *singleIter) Err() error                     { return s.it.Err() }
